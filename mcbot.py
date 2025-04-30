@@ -1,114 +1,171 @@
-import discord
-from discord.ext import tasks, commands
-from discord import app_commands
-from aternos import Client
-import asyncio
 import os
+import requests
+import discord
+from discord.ext import commands
+from discord.ui import Button, View
+from dotenv import load_dotenv
 
+# Load environment variables from .env
+load_dotenv()
+
+# Get environment variables
 TOKEN = os.getenv("TOKEN")
+Aternos_USERNAME = os.getenv("USERNAME")
+Aternos_PASSWORD = os.getenv("PASSWORD")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-USERNAME = os.getenv("USERNAME")
-PASSWORD = os.getenv("PASSWORD")
 
+# Set up the bot
 intents = discord.Intents.default()
-intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
-tree = bot.tree
 
-status_message = None
-aternos_server = None
-notifiers = set()
+# Aternos API base URL
+BASE_URL = "https://aternos.org/api/v1/"
 
+# Function to login to Aternos and retrieve a token
+def aternos_login(username, password):
+    login_url = BASE_URL + "login"
+    login_data = {"username": username, "password": password}
+    response = requests.post(login_url, data=login_data)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Login failed!")
+        return None
 
-class ServerView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+# Function to get server status
+def get_server_status(token):
+    server_url = BASE_URL + "server"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(server_url, headers=headers)
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Failed to fetch server status")
+        return None
 
-    @discord.ui.button(label="Start", style=discord.ButtonStyle.success)
-    async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🟢 Starting server...", ephemeral=True)
-        notifiers.add(interaction.user.id)
-        aternos_server.start()
+# Function to start the Aternos server
+def start_server(token):
+    start_url = BASE_URL + "server/start"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(start_url, headers=headers)
+    
+    if response.status_code == 200:
+        print("Server started!")
+        return True
+    else:
+        print("Failed to start server")
+        return False
 
-    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger)
-    async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🔴 Stopping server...", ephemeral=True)
-        aternos_server.stop()
+# Function to stop the Aternos server
+def stop_server(token):
+    stop_url = BASE_URL + "server/stop"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(stop_url, headers=headers)
+    
+    if response.status_code == 200:
+        print("Server stopped!")
+        return True
+    else:
+        print("Failed to stop server")
+        return False
 
-    @discord.ui.button(label="Restart", style=discord.ButtonStyle.primary)
-    async def restart_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🔄 Restarting server...", ephemeral=True)
-        aternos_server.restart()
+# Function to restart the Aternos server
+def restart_server(token):
+    restart_url = BASE_URL + "server/restart"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(restart_url, headers=headers)
+    
+    if response.status_code == 200:
+        print("Server restarted!")
+        return True
+    else:
+        print("Failed to restart server")
+        return False
 
+# Function to create the status message with buttons
+async def create_status_message(channel):
+    # Create the buttons
+    start_button = Button(label="Start", style=discord.ButtonStyle.green)
+    stop_button = Button(label="Stop", style=discord.ButtonStyle.red)
+    restart_button = Button(label="Restart", style=discord.ButtonStyle.blurple)
 
-async def get_server_status():
-    status = aternos_server.status
-    address = aternos_server.address
-    players = ""
+    # Button interaction callbacks
+    async def start_callback(interaction):
+        login_response = aternos_login(Aternos_USERNAME, Aternos_PASSWORD)
+        if login_response:
+            token = login_response.get("token")
+            if start_server(token):
+                await interaction.response.edit_message(content="Server started!")
+            else:
+                await interaction.response.edit_message(content="Failed to start server.")
 
-    if status.lower() == "online":
-        try:
-            players = aternos_server.players
-            players_list = ", ".join(players["list"]) if players["count"] > 0 else "No players online"
-            players = f"\n👥 **Players ({players['count']})**: {players_list}"
-        except Exception:
-            players = "\n👥 Could not fetch players."
-    return f"🌐 **Aternos Server Status:** `{status}`\n🔗 **IP:** `{address}`{players}"
+    async def stop_callback(interaction):
+        login_response = aternos_login(Aternos_USERNAME, Aternos_PASSWORD)
+        if login_response:
+            token = login_response.get("token")
+            if stop_server(token):
+                await interaction.response.edit_message(content="Server stopped!")
+            else:
+                await interaction.response.edit_message(content="Failed to stop server.")
+    
+    async def restart_callback(interaction):
+        login_response = aternos_login(Aternos_USERNAME, Aternos_PASSWORD)
+        if login_response:
+            token = login_response.get("token")
+            if restart_server(token):
+                await interaction.response.edit_message(content="Server restarted!")
+            else:
+                await interaction.response.edit_message(content="Failed to restart server.")
 
+    # Assign the callbacks to the buttons
+    start_button.callback = start_callback
+    stop_button.callback = stop_callback
+    restart_button.callback = restart_callback
 
+    # Create a view with the buttons
+    view = View()
+    view.add_item(start_button)
+    view.add_item(stop_button)
+    view.add_item(restart_button)
+
+    # Send the message with the buttons
+    message = await channel.send("Server is offline", view=view)
+    return message
+
+# Event that triggers when the bot is ready
 @bot.event
 async def on_ready():
-    print(f"✅ Logged in as {bot.user}")
-    try:
-        await tree.sync()
-    except Exception as e:
-        print(f"Slash command sync failed: {e}")
+    print(f"Logged in as {bot.user}!")
 
-    global aternos_server
-    at_client = Client.from_credentials(USERNAME, PASSWORD)
-    servers = at_client.list_servers()
-    aternos_server = servers[0]
-
+    # Get the channel to send the message
     channel = bot.get_channel(CHANNEL_ID)
-    global status_message
 
-    async for msg in channel.history(limit=50):
-        if msg.author == bot.user and msg.components:
-            status_message = msg
-            break
+    # Login to Aternos and get the token
+    login_response = aternos_login(Aternos_USERNAME, Aternos_PASSWORD)
+    if login_response:
+        token = login_response.get("token")
+        
+        # Get the server status
+        status = get_server_status(token)
 
-    if not status_message:
-        status_text = await get_server_status()
-        status_message = await channel.send(status_text, view=ServerView())
-    else:
-        await status_message.edit(view=ServerView())
+        # Send the status message and create buttons
+        if status:
+            server_status = "online" if status['online'] else "offline"
+            message = await create_status_message(channel)
+            await message.edit(content=f"Server is {server_status}")
 
-    update_status.start()
+# Function to update the status message regularly
+async def update_status_message():
+    channel = bot.get_channel(CHANNEL_ID)
+    login_response = aternos_login(Aternos_USERNAME, Aternos_PASSWORD)
+    if login_response:
+        token = login_response.get("token")
+        status = get_server_status(token)
+        server_status = "online" if status['online'] else "offline"
+        message = await channel.fetch_message(channel.last_message_id)
+        await message.edit(content=f"Server is {server_status}")
 
-
-@tasks.loop(seconds=30)
-async def update_status():
-    if not status_message:
-        return
-
-    current_status = aternos_server.status
-    content = await get_server_status()
-    await status_message.edit(content=content)
-
-    if current_status.lower() == "online":
-        for user_id in list(notifiers):
-            user = await bot.fetch_user(user_id)
-            try:
-                await user.send(f"✅ The Aternos server is now online!\nIP: `{aternos_server.address}`")
-            except discord.Forbidden:
-                print(f"Couldn't DM user {user.name}")
-            notifiers.remove(user_id)
-
-
-@tree.command(name="status", description="Show current Aternos server status")
-async def status_command(interaction: discord.Interaction):
-    status = await get_server_status()
-    await interaction.response.send_message(status, ephemeral=True)
-
-
+# Run the bot with the provided token
 bot.run(TOKEN)
