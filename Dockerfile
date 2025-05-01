@@ -1,23 +1,26 @@
-# Use the official Python image as a base
-FROM python:3.12-slim
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim
 
-# Install FFmpeg
-RUN apt-get update && apt-get install -y ffmpeg
-
-# Set the working directory to /app
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements.txt to the container
-COPY requirements.txt /app/
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the bot code into the container
-COPY . /app/
+# Expose the port the bot will run on (optional, for debugging purposes)
+EXPOSE 8080
 
-# Set the environment variable for FFmpeg location
-ENV FFMPEG_LOCATION=/usr/bin/ffmpeg
+# Define environment variable for Railway
+ENV PYTHONUNBUFFERED=1
 
-# Command to run the bot
+# Run the bot
 CMD ["python", "mcbot.py"]

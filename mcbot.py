@@ -13,10 +13,10 @@ bot = commands.Bot(command_prefix="?", intents=intents)
 async def c3(ctx, url: str):
     # Define the options for yt-dlp
     ydl_opts = {
-        'ffmpeg_location': '/usr/bin/ffmpeg',  # Ensure ffmpeg is correctly located
+        'ffmpeg_location': 'ffmpeg',  # Use global ffmpeg
         'format': 'bestaudio/best',  # Download best audio quality
         'postprocessors': [{
-            'key': 'FFmpegAudioConvertor',
+            'key': 'FFmpegExtractAudio',  # Correct key for audio extraction
             'preferredcodec': 'mp3',
             'preferredquality': '192',  # Audio quality
         }],
@@ -39,12 +39,11 @@ async def c3(ctx, url: str):
 async def c4(ctx, url: str):
     # Define the options for yt-dlp
     ydl_opts = {
-        'ffmpeg_location': '/usr/bin/ffmpeg',
+        'ffmpeg_location': 'ffmpeg',  # Use global ffmpeg
         'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
         'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
+            'key': 'FFmpegVideoConvertor',  # Correct key for video conversion
             'preferredcodec': 'mp4',
-            'preferredquality': '192',
         }],
         'outtmpl': 'downloads/%(id)s.%(ext)s',
     }
