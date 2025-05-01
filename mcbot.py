@@ -82,12 +82,21 @@ async def c4(ctx, url: str):
         # Check if the file size exceeds 10 MB
         if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
             compressed_file_path = f'downloads/{info["id"]}_compressed.mp4'
-            # Compress the file using ffmpeg
-            subprocess.run([
-                '/usr/bin/ffmpeg', '-i', file_path, '-vf', 'scale=1280:720', '-b:v', '1M', compressed_file_path
-            ])
-            os.remove(file_path)  # Remove the original file
-            file_path = compressed_file_path  # Use the compressed file instead
+
+            # Compress the file using ffmpeg with more aggressive settings
+            def compress_video():
+                subprocess.run([
+                    '/usr/bin/ffmpeg', '-i', file_path,
+                    '-vf', 'scale=1280:720',  # Scale video to 720p
+                    '-b:v', '800k',          # Lower video bitrate to 800 kbps
+                    '-b:a', '96k',           # Lower audio bitrate to 96 kbps
+                    '-fs', '8M',             # Limit output file size to 8 MB
+                    compressed_file_path
+                ])
+                os.remove(file_path)  # Remove the original file
+                return compressed_file_path
+
+            file_path = await asyncio.to_thread(compress_video)
 
         # Send the (compressed) MP4 file to Discord
         await ctx.send(file=discord.File(file_path))
