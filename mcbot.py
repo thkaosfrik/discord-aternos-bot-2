@@ -23,12 +23,16 @@ async def c3(ctx, url: str):
         'outtmpl': 'downloads/%(id)s.%(ext)s',  # Save file to downloads folder
     }
 
-    # Use yt-dlp to download the audio from the YouTube link and convert it
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        # Use yt-dlp to download the audio from the YouTube link and convert it
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
-    # Send the MP3 file to Discord
-    await ctx.send(file=discord.File(f'downloads/{info["id"]}.mp3'))
+        # Send the MP3 file to Discord
+        await ctx.send(file=discord.File(f'downloads/{info["id"]}.mp3'))
+
+    except Exception as e:
+        await ctx.send(f"An error occurred: {str(e)}")
 
 # Command to convert YouTube video to MP4
 @bot.command()
@@ -45,12 +49,16 @@ async def c4(ctx, url: str):
         'outtmpl': 'downloads/%(id)s.%(ext)s',
     }
 
-    # Use yt-dlp to download the video and convert it to MP4
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        # Use yt-dlp to download the video and convert it to MP4
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
-    # Send the MP4 file to Discord
-    await ctx.send(file=discord.File(f'downloads/{info["id"]}.mp4'))
+        # Send the MP4 file to Discord
+        await ctx.send(file=discord.File(f'downloads/{info["id"]}.mp4'))
+
+    except Exception as e:
+        await ctx.send(f"An error occurred: {str(e)}")
 
 # Run the bot with your token
 bot.run(os.getenv('DISCORD_TOKEN'))
