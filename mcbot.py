@@ -29,8 +29,22 @@ async def c3(ctx, url: str):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-        # Send the MP3 file to Discord
-        await ctx.send(file=discord.File(f'downloads/{info["id"]}.mp3'))
+        file_path = f'downloads/{info["id"]}.mp3'
+        file_size = os.path.getsize(file_path)
+
+        # Check if the file size exceeds 10 MB
+        if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
+            compressed_file_path = f'downloads/{info["id"]}_compressed.mp3'
+            # Compress the file using ffmpeg
+            subprocess.run([
+                '/usr/bin/ffmpeg', '-i', file_path, '-b:a', '128k', compressed_file_path
+            ])
+            os.remove(file_path)  # Remove the original file
+            file_path = compressed_file_path  # Use the compressed file instead
+
+        # Send the (compressed) MP3 file to Discord
+        await ctx.send(file=discord.File(file_path))
+        os.remove(file_path)  # Clean up the file after sending
 
     except Exception as e:
         await ctx.send(f"An error occurred: {str(e)}")
@@ -54,8 +68,22 @@ async def c4(ctx, url: str):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-        # Send the MP4 file to Discord
-        await ctx.send(file=discord.File(f'downloads/{info["id"]}.mp4'))
+        file_path = f'downloads/{info["id"]}.mp4'
+        file_size = os.path.getsize(file_path)
+
+        # Check if the file size exceeds 10 MB
+        if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
+            compressed_file_path = f'downloads/{info["id"]}_compressed.mp4'
+            # Compress the file using ffmpeg
+            subprocess.run([
+                '/usr/bin/ffmpeg', '-i', file_path, '-vf', 'scale=1280:720', '-b:v', '1M', compressed_file_path
+            ])
+            os.remove(file_path)  # Remove the original file
+            file_path = compressed_file_path  # Use the compressed file instead
+
+        # Send the (compressed) MP4 file to Discord
+        await ctx.send(file=discord.File(file_path))
+        os.remove(file_path)  # Clean up the file after sending
 
     except Exception as e:
         await ctx.send(f"An error occurred: {str(e)}")
