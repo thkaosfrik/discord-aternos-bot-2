@@ -33,7 +33,7 @@ async def c3(ctx, url: str):
         # Notify the user that the download is starting
         progress_message = await ctx.send("Starting download...")
 
-        # Run yt-dlp in a separate thread and update the loading symbol
+        # Run yt-dlp in a separate thread
         def download_audio():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
@@ -47,12 +47,14 @@ async def c3(ctx, url: str):
                 index = (index + 1) % len(symbols)  # Cycle through the symbols
                 await asyncio.sleep(0.5)  # Update every 0.5 seconds
 
-        # Run the download and loading symbol concurrently
-        download_task = asyncio.to_thread(download_audio)
-        loading_task = asyncio.create_task(update_loading_symbol())  # Wrap in create_task
-        download_result = await asyncio.gather(download_task, loading_task)
+        # Create the download task
+        download_task = asyncio.create_task(asyncio.to_thread(download_audio))
 
-        info = download_result[0]  # Unpack the result of the download task
+        # Run the loading symbol and download concurrently
+        await asyncio.gather(download_task, update_loading_symbol())
+
+        # Get the result of the download task
+        info = download_task.result()
 
         # Delete the progress message once the download is complete
         await progress_message.delete()
