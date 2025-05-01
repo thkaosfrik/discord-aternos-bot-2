@@ -11,6 +11,9 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="?", intents=intents)
 
+# Queue to handle multiple requests
+download_queue = asyncio.Queue()
+
 # Command to convert YouTube video to MP3
 @bot.command()
 async def c3(ctx, url: str):
@@ -61,63 +64,86 @@ async def c3(ctx, url: str):
 # Command to convert YouTube video to MP4
 @bot.command()
 async def c4(ctx, url: str):
-    # Define the options for yt-dlp
-    ydl_opts = {
-        'ffmpeg_location': '/usr/bin/ffmpeg',  # Explicit path to ffmpeg
-        'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',  # Correct key for video conversion
-        }],
-        'outtmpl': 'downloads/%(id)s.%(ext)s',  # Save file to downloads folder
-    }
+    # Add the request to the queue
+    await download_queue.put((ctx, url))
+    await ctx.send("Your request has been added to the queue. Please wait...")
 
-    try:
-        # Use yt-dlp to download the video and convert it to MP4
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+    # Process the queue
+    if download_queue.qsize() == 1:  # Only process if this is the first item in the queue
+        await process_queue()
 
-        file_path = f'downloads/{info["id"]}.mp4'
-        file_size = os.path.getsize(file_path)
+async def process_queue():
+    while not download_queue.empty():
+        ctx, url = await download_queue.get()
 
-        # Check if the file size exceeds 10 MB
-        if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
-            compressed_file_path = f'downloads/{info["id"]}_compressed.mp4'
+        # Define the options for yt-dlp
+        ydl_opts = {
+            'ffmpeg_location': '/usr/bin/ffmpeg',  # Explicit path to ffmpeg
+            'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
+            'outtmpl': 'downloads/%(id)s.%(ext)s',  # Save file to downloads folder
+        }
 
-            # Compress the file using ffmpeg with more aggressive settings
-            def compress_video():
-                subprocess.run([
-                    '/usr/bin/ffmpeg', '-i', file_path,
-                    '-vf', 'scale=640:360',  # Scale video to 360p
-                    '-b:v', '500k',          # Lower video bitrate to 500 kbps
-                    '-b:a', '64k',           # Lower audio bitrate to 64 kbps
-                    '-fs', '8M',             # Limit output file size to 8 MB
-                    compressed_file_path
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress ffmpeg output
-                os.remove(file_path)  # Remove the original file
-                return compressed_file_path
+        try:
+            # Notify the user that the download is starting
+            progress_message = await ctx.send("Starting download...")
 
-            file_path = await asyncio.to_thread(compress_video)
+            # Run yt-dlp in a separate thread and update progress
+            def download_video():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=True)
 
-        # Check if the compressed file still exceeds Discord's limit
-        if os.path.getsize(file_path) > 8 * 1024 * 1024:  # 8 MB in bytes
-            # Upload the file to transfer.sh
-            def upload_to_transfer_sh(file_path):
-                with open(file_path, 'rb') as f:
-                    response = requests.post('https://transfer.sh/', files={'file': f})
-                    return response.text.strip()
+            # Simulate a progress bar
+            async def update_progress_bar():
+                progress = 0
+                while progress < 100:
+                    progress += 10
+                    await progress_message.edit(content=f"Downloading... [{progress}%]")
+                    await asyncio.sleep(1)
 
-            download_link = await asyncio.to_thread(upload_to_transfer_sh, file_path)
-            os.remove(file_path)  # Clean up the file after uploading
+            # Run the download and progress bar concurrently
+            download_task = asyncio.to_thread(download_video)
+            progress_task = update_progress_bar()
+            info = await asyncio.gather(download_task, progress_task)[0]
 
-            # Send the download link to Discord
-            await ctx.send(f"The file is too large to upload to Discord. You can download it here: {download_link}")
-        else:
-            # Send the (compressed) MP4 file to Discord
-            await ctx.send(file=discord.File(file_path))
-            os.remove(file_path)  # Clean up the file after sending
+            # Delete the progress message once the download is complete
+            await progress_message.delete()
 
-    except Exception as e:
-        await ctx.send(f"An error occurred: {str(e)}")
+            file_path = f'downloads/{info["id"]}.mp4'
+            file_size = os.path.getsize(file_path)
+
+            # Check if the file size exceeds 10 MB
+            if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
+                compressed_file_path = f'downloads/{info["id"]}_compressed.mp4'
+
+                # Compress the file using ffmpeg with more aggressive settings
+                def compress_video():
+                    subprocess.run([
+                        '/usr/bin/ffmpeg', '-i', file_path,
+                        '-vf', 'scale=640:360',  # Scale video to 360p
+                        '-b:v', '500k',          # Lower video bitrate to 500 kbps
+                        '-b:a', '64k',           # Lower audio bitrate to 64 kbps
+                        '-fs', '8M',             # Limit output file size to 8 MB
+                        compressed_file_path
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress ffmpeg output
+                    os.remove(file_path)  # Remove the original file
+                    return compressed_file_path
+
+                file_path = await asyncio.to_thread(compress_video)
+
+            # Check if the compressed file still exceeds Discord's limit
+            if os.path.getsize(file_path) > 8 * 1024 * 1024:  # 8 MB in bytes
+                os.remove(file_path)  # Clean up the file
+                await ctx.send("The file is too large to upload to Discord, even after compression.")
+            else:
+                # Send the (compressed) MP4 file to Discord
+                await ctx.send(file=discord.File(file_path))
+                os.remove(file_path)  # Clean up the file after sending
+
+        except Exception as e:
+            await ctx.send(f"An error occurred: {str(e)}")
+
+        # Notify the user that their request has been processed
+        await ctx.send("Your request has been processed.")
 
 @bot.command()
 async def check_ffmpeg(ctx):
