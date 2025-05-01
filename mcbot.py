@@ -50,7 +50,9 @@ async def c3(ctx, url: str):
         # Run the download and loading symbol concurrently
         download_task = asyncio.to_thread(download_audio)
         loading_task = update_loading_symbol()
-        info = await asyncio.gather(download_task, loading_task)[0]
+        download_result, _ = await asyncio.gather(download_task, loading_task)
+
+        info = download_result  # Unpack the result of the download task
 
         # Delete the progress message once the download is complete
         await progress_message.delete()
@@ -83,88 +85,80 @@ async def c3(ctx, url: str):
 # Command to convert YouTube video to MP4
 @bot.command()
 async def c4(ctx, url: str):
-    # Add the request to the queue
-    await download_queue.put((ctx, url))
-    await ctx.send("Your request has been added to the queue. Please wait...")
+    # Define the options for yt-dlp
+    ydl_opts = {
+        'ffmpeg_location': '/usr/bin/ffmpeg',  # Explicit path to ffmpeg
+        'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
+        'outtmpl': 'downloads/%(id)s.%(ext)s',  # Save file to downloads folder
+    }
 
-    # Process the queue
-    if download_queue.qsize() == 1:  # Only process if this is the first item in the queue
-        await process_queue()
+    try:
+        # Notify the user that the download is starting
+        progress_message = await ctx.send("Starting download...")
 
-async def process_queue():
-    while not download_queue.empty():
-        ctx, url = await download_queue.get()
+        # Run yt-dlp in a separate thread and update the loading symbol
+        def download_video():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
 
-        # Define the options for yt-dlp
-        ydl_opts = {
-            'ffmpeg_location': '/usr/bin/ffmpeg',  # Explicit path to ffmpeg
-            'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
-            'outtmpl': 'downloads/%(id)s.%(ext)s',  # Save file to downloads folder
-        }
+        # Simulate a moving loading symbol
+        async def update_loading_symbol():
+            symbols = ["|", "/", "-", "\\"]
+            index = 0
+            while not download_task.done():  # Keep updating until the download is complete
+                await progress_message.edit(content=f"Downloading... {symbols[index]}")
+                index = (index + 1) % len(symbols)  # Cycle through the symbols
+                await asyncio.sleep(0.5)  # Update every 0.5 seconds
 
-        try:
-            # Notify the user that the download is starting
-            progress_message = await ctx.send("Starting download...")
+        # Run the download and loading symbol concurrently
+        download_task = asyncio.to_thread(download_video)
+        loading_task = update_loading_symbol()
+        download_result, _ = await asyncio.gather(download_task, loading_task)
 
-            # Run yt-dlp in a separate thread and update progress
-            def download_video():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    return ydl.extract_info(url, download=True)
+        info = download_result  # Unpack the result of the download task
 
-            # Simulate a progress bar
-            async def update_progress_bar():
-                progress = 0
-                while progress < 100:
-                    progress += 10
-                    await progress_message.edit(content=f"Downloading... [{progress}%]")
-                    await asyncio.sleep(1)
+        # Delete the progress message once the download is complete
+        await progress_message.delete()
 
-            # Run the download and progress bar concurrently
-            download_task = asyncio.to_thread(download_video)
-            progress_task = update_progress_bar()
-            download_result, _ = await asyncio.gather(download_task, progress_task)
+        file_path = f'downloads/{info["id"]}.mp4'
 
-            info = download_result  # Unpack the result of the download task
+        # Check if the file exists
+        if not os.path.exists(file_path):
+            await ctx.send("The file could not be found. The download may have failed.")
+            return
 
-            # Delete the progress message once the download is complete
-            await progress_message.delete()
+        file_size = os.path.getsize(file_path)
 
-            file_path = f'downloads/{info["id"]}.mp4'
-            file_size = os.path.getsize(file_path)
+        # Check if the file size exceeds 10 MB
+        if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
+            compressed_file_path = f'downloads/{info["id"]}_compressed.mp4'
 
-            # Check if the file size exceeds 10 MB
-            if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
-                compressed_file_path = f'downloads/{info["id"]}_compressed.mp4'
+            # Compress the file using ffmpeg with more aggressive settings
+            def compress_video():
+                subprocess.run([
+                    '/usr/bin/ffmpeg', '-i', file_path,
+                    '-vf', 'scale=640:360',  # Scale video to 360p
+                    '-b:v', '500k',          # Lower video bitrate to 500 kbps
+                    '-b:a', '64k',           # Lower audio bitrate to 64 kbps
+                    '-fs', '8M',             # Limit output file size to 8 MB
+                    compressed_file_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress ffmpeg output
+                os.remove(file_path)  # Remove the original file
+                return compressed_file_path
 
-                # Compress the file using ffmpeg with more aggressive settings
-                def compress_video():
-                    subprocess.run([
-                        '/usr/bin/ffmpeg', '-i', file_path,
-                        '-vf', 'scale=640:360',  # Scale video to 360p
-                        '-b:v', '500k',          # Lower video bitrate to 500 kbps
-                        '-b:a', '64k',           # Lower audio bitrate to 64 kbps
-                        '-fs', '8M',             # Limit output file size to 8 MB
-                        compressed_file_path
-                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress ffmpeg output
-                    os.remove(file_path)  # Remove the original file
-                    return compressed_file_path
+            file_path = await asyncio.to_thread(compress_video)
 
-                file_path = await asyncio.to_thread(compress_video)
+        # Check if the compressed file still exceeds Discord's limit
+        if os.path.getsize(file_path) > 8 * 1024 * 1024:  # 8 MB in bytes
+            os.remove(file_path)  # Clean up the file
+            await ctx.send("The file is too large to upload to Discord, even after compression.")
+        else:
+            # Send the (compressed) MP4 file to Discord
+            await ctx.send(file=discord.File(file_path))
+            os.remove(file_path)  # Clean up the file after sending
 
-            # Check if the compressed file still exceeds Discord's limit
-            if os.path.getsize(file_path) > 8 * 1024 * 1024:  # 8 MB in bytes
-                os.remove(file_path)  # Clean up the file
-                await ctx.send("The file is too large to upload to Discord, even after compression.")
-            else:
-                # Send the (compressed) MP4 file to Discord
-                await ctx.send(file=discord.File(file_path))
-                os.remove(file_path)  # Clean up the file after sending
-
-        except Exception as e:
-            await ctx.send(f"An error occurred: {str(e)}")
-
-        # Notify the user that their request has been processed
-        await ctx.send("Your request has been processed.")
+    except Exception as e:
+        await ctx.send(f"An error occurred: {str(e)}")
 
 @bot.command()
 async def check_ffmpeg(ctx):
