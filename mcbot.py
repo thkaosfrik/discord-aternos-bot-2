@@ -3,6 +3,7 @@ from discord.ext import commands
 import yt_dlp
 import os
 import subprocess
+import asyncio
 
 # Set up the bot and define the command prefix
 intents = discord.Intents.default()
@@ -25,9 +26,12 @@ async def c3(ctx, url: str):
     }
 
     try:
-        # Use yt-dlp to download the audio from the YouTube link and convert it
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        # Run yt-dlp in a separate thread
+        def download_audio():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=True)
+
+        info = await asyncio.to_thread(download_audio)
 
         file_path = f'downloads/{info["id"]}.mp3'
         file_size = os.path.getsize(file_path)
@@ -35,12 +39,16 @@ async def c3(ctx, url: str):
         # Check if the file size exceeds 10 MB
         if file_size > 10 * 1024 * 1024:  # 10 MB in bytes
             compressed_file_path = f'downloads/{info["id"]}_compressed.mp3'
-            # Compress the file using ffmpeg
-            subprocess.run([
-                '/usr/bin/ffmpeg', '-i', file_path, '-b:a', '128k', compressed_file_path
-            ])
-            os.remove(file_path)  # Remove the original file
-            file_path = compressed_file_path  # Use the compressed file instead
+
+            # Run ffmpeg compression in a separate thread
+            def compress_audio():
+                subprocess.run([
+                    '/usr/bin/ffmpeg', '-i', file_path, '-b:a', '128k', compressed_file_path
+                ])
+                os.remove(file_path)  # Remove the original file
+                return compressed_file_path
+
+            file_path = await asyncio.to_thread(compress_audio)
 
         # Send the (compressed) MP3 file to Discord
         await ctx.send(file=discord.File(file_path))
