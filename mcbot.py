@@ -30,12 +30,30 @@ async def c3(ctx, url: str):
     }
 
     try:
-        # Run yt-dlp in a separate thread
+        # Notify the user that the download is starting
+        progress_message = await ctx.send("Starting download...")
+
+        # Run yt-dlp in a separate thread and update the loading symbol
         def download_audio():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(url, download=True)
 
-        info = await asyncio.to_thread(download_audio)
+        # Simulate a moving loading symbol
+        async def update_loading_symbol():
+            symbols = ["|", "/", "-", "\\"]
+            index = 0
+            while not download_task.done():  # Keep updating until the download is complete
+                await progress_message.edit(content=f"Downloading... {symbols[index]}")
+                index = (index + 1) % len(symbols)  # Cycle through the symbols
+                await asyncio.sleep(0.5)  # Update every 0.5 seconds
+
+        # Run the download and loading symbol concurrently
+        download_task = asyncio.to_thread(download_audio)
+        loading_task = update_loading_symbol()
+        info = await asyncio.gather(download_task, loading_task)[0]
+
+        # Delete the progress message once the download is complete
+        await progress_message.delete()
 
         file_path = f'downloads/{info["id"]}.mp3'
         file_size = os.path.getsize(file_path)
@@ -47,7 +65,8 @@ async def c3(ctx, url: str):
             # Run ffmpeg compression in a separate thread
             def compress_audio():
                 subprocess.run([
-                    '/usr/bin/ffmpeg', '-i', file_path, '-b:a', '128k', compressed_file_path
+                    '/usr/bin/ffmpeg', '-i', file_path,
+                    '-b:a', '128k', compressed_file_path
                 ])
                 os.remove(file_path)  # Remove the original file
                 return compressed_file_path
@@ -103,7 +122,9 @@ async def process_queue():
             # Run the download and progress bar concurrently
             download_task = asyncio.to_thread(download_video)
             progress_task = update_progress_bar()
-            info = await asyncio.gather(download_task, progress_task)[0]
+            download_result, _ = await asyncio.gather(download_task, progress_task)
+
+            info = download_result  # Unpack the result of the download task
 
             # Delete the progress message once the download is complete
             await progress_message.delete()
