@@ -4,6 +4,7 @@ import yt_dlp
 import os
 import subprocess
 import asyncio
+import requests  # Add this import for handling HTTP requests
 
 # Set up the bot and define the command prefix
 intents = discord.Intents.default()
@@ -66,9 +67,8 @@ async def c4(ctx, url: str):
         'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',  # Correct key for video conversion
-            'preferredcodec': 'mp4',
         }],
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'outtmpl': 'downloads/%(id)s.%(ext)s',  # Save file to downloads folder
     }
 
     try:
@@ -98,9 +98,23 @@ async def c4(ctx, url: str):
 
             file_path = await asyncio.to_thread(compress_video)
 
-        # Send the (compressed) MP4 file to Discord
-        await ctx.send(file=discord.File(file_path))
-        os.remove(file_path)  # Clean up the file after sending
+        # Check if the compressed file still exceeds Discord's limit
+        if os.path.getsize(file_path) > 8 * 1024 * 1024:  # 8 MB in bytes
+            # Upload the file to transfer.sh
+            def upload_to_transfer_sh(file_path):
+                with open(file_path, 'rb') as f:
+                    response = requests.post('https://transfer.sh/', files={'file': f})
+                    return response.text.strip()
+
+            download_link = await asyncio.to_thread(upload_to_transfer_sh, file_path)
+            os.remove(file_path)  # Clean up the file after uploading
+
+            # Send the download link to Discord
+            await ctx.send(f"The file is too large to upload to Discord. You can download it here: {download_link}")
+        else:
+            # Send the (compressed) MP4 file to Discord
+            await ctx.send(file=discord.File(file_path))
+            os.remove(file_path)  # Clean up the file after sending
 
     except Exception as e:
         await ctx.send(f"An error occurred: {str(e)}")
