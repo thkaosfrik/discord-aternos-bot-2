@@ -49,10 +49,10 @@ async def c3(ctx, url: str):
 
         # Run the download and loading symbol concurrently
         download_task = asyncio.to_thread(download_audio)
-        loading_task = update_loading_symbol()
-        download_result, _ = await asyncio.gather(download_task, loading_task)
+        loading_task = asyncio.create_task(update_loading_symbol())  # Wrap in create_task
+        download_result = await asyncio.gather(download_task, loading_task)
 
-        info = download_result  # Unpack the result of the download task
+        info = download_result[0]  # Unpack the result of the download task
 
         # Delete the progress message once the download is complete
         await progress_message.delete()
@@ -112,10 +112,10 @@ async def c4(ctx, url: str):
 
         # Run the download and loading symbol concurrently
         download_task = asyncio.to_thread(download_video)
-        loading_task = update_loading_symbol()
-        download_result, _ = await asyncio.gather(download_task, loading_task)
+        loading_task = asyncio.create_task(update_loading_symbol())  # Wrap in create_task
+        download_result = await asyncio.gather(download_task, loading_task)
 
-        info = download_result  # Unpack the result of the download task
+        info = download_result[0]  # Unpack the result of the download task
 
         # Delete the progress message once the download is complete
         await progress_message.delete()
