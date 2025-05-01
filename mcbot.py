@@ -121,16 +121,14 @@ async def c4(ctx, url: str):
         # Get the result of the download task
         info = download_task.result()
 
-        # Debug: Log the info object (truncate if too large)
-        debug_info = str(info)
-        if len(debug_info) > 1000:  # Truncate if too long
-            debug_info = debug_info[:1000] + "... (truncated)"
-        await ctx.send(f"Debug: Download info: {debug_info}")
+        # Debug: Log the info object
+        await ctx.send(f"Debug: Download info: {info}")
 
         # Delete the progress message once the download is complete
         await progress_message.delete()
 
-        file_path = f'downloads/{info["id"]}.mp4'
+        # Construct the file path dynamically using the actual file extension
+        file_path = f'downloads/{info["id"]}.{info["ext"]}'
 
         # Debug: Check if the file exists
         if not os.path.exists(file_path):
