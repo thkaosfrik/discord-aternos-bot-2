@@ -141,6 +141,19 @@ async def c4(ctx, url: str):
             await ctx.send("The file could not be found. The download may have failed.")
             return
 
+        # Convert to MP4 if the file is not already in MP4 format
+        if info["ext"] != "mp4":
+            converted_file_path = f'downloads/{info["id"]}_converted.mp4'
+
+            # Run ffmpeg to convert the file to MP4
+            def convert_to_mp4():
+                subprocess.run([
+                    '/usr/bin/ffmpeg', '-i', file_path, '-c:v', 'copy', '-c:a', 'aac', converted_file_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress ffmpeg output
+                return converted_file_path
+
+            file_path = await asyncio.to_thread(convert_to_mp4)
+
         file_size = os.path.getsize(file_path)
 
         # Check if the file size exceeds 10 MB
