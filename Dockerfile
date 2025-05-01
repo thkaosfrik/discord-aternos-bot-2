@@ -7,7 +7,7 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-# Install system dependencies
+# Install system dependencies, including ffmpeg
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     && apt-get clean \
@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Verify ffmpeg installation (optional for debugging)
+RUN ffmpeg -version
 
 # Expose the port the bot will run on (optional, for debugging purposes)
 EXPOSE 8080

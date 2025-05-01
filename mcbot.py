@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import os
+import subprocess
 
 # Set up the bot and define the command prefix
 intents = discord.Intents.default()
@@ -13,7 +14,7 @@ bot = commands.Bot(command_prefix="?", intents=intents)
 async def c3(ctx, url: str):
     # Define the options for yt-dlp
     ydl_opts = {
-        'ffmpeg_location': 'ffmpeg',  # Use global ffmpeg
+        'ffmpeg_location': '/usr/bin/ffmpeg',  # Explicit path to ffmpeg
         'format': 'bestaudio/best',  # Download best audio quality
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',  # Correct key for audio extraction
@@ -39,7 +40,7 @@ async def c3(ctx, url: str):
 async def c4(ctx, url: str):
     # Define the options for yt-dlp
     ydl_opts = {
-        'ffmpeg_location': 'ffmpeg',  # Use global ffmpeg
+        'ffmpeg_location': '/usr/bin/ffmpeg',  # Explicit path to ffmpeg
         'format': 'bestvideo+bestaudio/best',  # Download best video and audio quality
         'postprocessors': [{
             'key': 'FFmpegVideoConvertor',  # Correct key for video conversion
@@ -58,6 +59,14 @@ async def c4(ctx, url: str):
 
     except Exception as e:
         await ctx.send(f"An error occurred: {str(e)}")
+
+@bot.command()
+async def check_ffmpeg(ctx):
+    try:
+        result = subprocess.run(['/usr/bin/ffmpeg', '-version'], capture_output=True, text=True)
+        await ctx.send(f"FFmpeg is installed:\n{result.stdout}")
+    except FileNotFoundError:
+        await ctx.send("FFmpeg is not installed or not found.")
 
 # Run the bot with your token
 bot.run(os.getenv('DISCORD_TOKEN'))
