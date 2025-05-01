@@ -87,12 +87,12 @@ async def c4(ctx, url: str):
             def compress_video():
                 subprocess.run([
                     '/usr/bin/ffmpeg', '-i', file_path,
-                    '-vf', 'scale=1280:720',  # Scale video to 720p
-                    '-b:v', '800k',          # Lower video bitrate to 800 kbps
-                    '-b:a', '96k',           # Lower audio bitrate to 96 kbps
+                    '-vf', 'scale=640:360',  # Scale video to 360p
+                    '-b:v', '500k',          # Lower video bitrate to 500 kbps
+                    '-b:a', '64k',           # Lower audio bitrate to 64 kbps
                     '-fs', '8M',             # Limit output file size to 8 MB
                     compressed_file_path
-                ])
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress ffmpeg output
                 os.remove(file_path)  # Remove the original file
                 return compressed_file_path
 
